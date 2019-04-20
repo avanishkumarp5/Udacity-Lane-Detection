@@ -1,0 +1,743 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Self-Driving Car Engineer Nanodegree\n",
+    "\n",
+    "\n",
+    "## Project: **Finding Lane Lines on the Road** \n",
+    "***\n",
+    "In this project, you will use the tools you learned about in the lesson to identify lane lines on the road.  You can develop your pipeline on a series of individual images, and later apply the result to a video stream (really just a series of images). Check out the video clip \"raw-lines-example.mp4\" (also contained in this repository) to see what the output should look like after using the helper functions below. \n",
+    "\n",
+    "Once you have a result that looks roughly like \"raw-lines-example.mp4\", you'll need to get creative and try to average and/or extrapolate the line segments you've detected to map out the full extent of the lane lines.  You can see an example of the result you're going for in the video \"P1_example.mp4\".  Ultimately, you would like to draw just one line for the left side of the lane, and one for the right.\n",
+    "\n",
+    "In addition to implementing code, there is a brief writeup to complete. The writeup should be completed in a separate file, which can be either a markdown file or a pdf document. There is a [write up template](https://github.com/udacity/CarND-LaneLines-P1/blob/master/writeup_template.md) that can be used to guide the writing process. Completing both the code in the Ipython notebook and the writeup template will cover all of the [rubric points](https://review.udacity.com/#!/rubrics/322/view) for this project.\n",
+    "\n",
+    "---\n",
+    "Let's have a look at our first image called 'test_images/solidWhiteRight.jpg'.  Run the 2 cells below (hit Shift-Enter or the \"play\" button above) to display the image.\n",
+    "\n",
+    "**Note: If, at any point, you encounter frozen display windows or other confounding issues, you can always start again with a clean slate by going to the \"Kernel\" menu above and selecting \"Restart & Clear Output\".**\n",
+    "\n",
+    "---"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "**The tools you have are color selection, region of interest selection, grayscaling, Gaussian smoothing, Canny Edge Detection and Hough Tranform line detection.  You  are also free to explore and try other techniques that were not presented in the lesson.  Your goal is piece together a pipeline to detect the line segments in the image, then average/extrapolate them and draw them onto the image for display (as below).  Once you have a working pipeline, try it out on the video stream below.**\n",
+    "\n",
+    "---\n",
+    "\n",
+    "<figure>\n",
+    " <img src=\"examples/line-segments-example.jpg\" width=\"380\" alt=\"Combined Image\" />\n",
+    " <figcaption>\n",
+    " <p></p> \n",
+    " <p style=\"text-align: center;\"> Your output should look something like this (above) after detecting line segments using the helper functions below </p> \n",
+    " </figcaption>\n",
+    "</figure>\n",
+    " <p></p> \n",
+    "<figure>\n",
+    " <img src=\"examples/laneLines_thirdPass.jpg\" width=\"380\" alt=\"Combined Image\" />\n",
+    " <figcaption>\n",
+    " <p></p> \n",
+    " <p style=\"text-align: center;\"> Your goal is to connect/average/extrapolate line segments to get output like this</p> \n",
+    " </figcaption>\n",
+    "</figure>"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "**Run the cell below to import some packages.  If you get an `import error` for a package you've already installed, try changing your kernel (select the Kernel menu above --> Change Kernel).  Still have problems?  Try relaunching Jupyter Notebook from the terminal prompt.  Also, consult the forums for more troubleshooting tips.**  "
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Import Packages"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 16,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#importing some useful packages\n",
+    "import matplotlib.pyplot as plt\n",
+    "import matplotlib.image as mpimg\n",
+    "import numpy as np\n",
+    "import cv2\n",
+    "\n",
+    "from scipy import stats\n",
+    "\n",
+    "%matplotlib inline"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Read in an Image"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#reading in an image\n",
+    "image = mpimg.imread('test_images/solidWhiteRight.jpg')\n",
+    "\n",
+    "#printing out some stats and plotting\n",
+    "print('This image is:', type(image), 'with dimensions:', image.shape)\n",
+    "plt.imshow(image)  # if you wanted to show a single color channel image called 'gray', for example, call as plt.imshow(gray, cmap='gray')"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Ideas for Lane Detection Pipeline"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "**Some OpenCV functions (beyond those introduced in the lesson) that might be useful for this project are:**\n",
+    "\n",
+    "`cv2.inRange()` for color selection  \n",
+    "`cv2.fillPoly()` for regions selection  \n",
+    "`cv2.line()` to draw lines on an image given endpoints  \n",
+    "`cv2.addWeighted()` to coadd / overlay two images\n",
+    "`cv2.cvtColor()` to grayscale or change color\n",
+    "`cv2.imwrite()` to output images to file  \n",
+    "`cv2.bitwise_and()` to apply a mask to an image\n",
+    "\n",
+    "**Check out the OpenCV documentation to learn about these and discover even more awesome functionality!**"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Helper Functions"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Below are some helper functions to help get you started. They should look familiar from the lesson!"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 18,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import math\n",
+    "\n",
+    "def grayscale(img):\n",
+    "    \"\"\"Applies the Grayscale transform\n",
+    "    This will return an image with only one color channel\n",
+    "    but NOTE: to see the returned image as grayscale\n",
+    "    (assuming your grayscaled image is called 'gray')\n",
+    "    you should call plt.imshow(gray, cmap='gray')\"\"\"\n",
+    "    return cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)\n",
+    "    # Or use BGR2GRAY if you read an image with cv2.imread()\n",
+    "    # return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)\n",
+    "    \n",
+    "def canny(img, low_threshold, high_threshold):\n",
+    "    \"\"\"Applies the Canny transform\"\"\"\n",
+    "    return cv2.Canny(img, low_threshold, high_threshold)\n",
+    "\n",
+    "def gaussian_blur(img, kernel_size):\n",
+    "    \"\"\"Applies a Gaussian Noise kernel\"\"\"\n",
+    "    return cv2.GaussianBlur(img, (kernel_size, kernel_size), 0)\n",
+    "\n",
+    "def findcoords(img):\n",
+    "    \n",
+    "    imshape=img.shape\n",
+    "    height=imshape[0]\n",
+    "    width=imshape[1]\n",
+    "\n",
+    "    vert=None\n",
+    "    if (width, height) == (960, 540):\n",
+    "            region_bottom_left = (130 ,imshape[0] - 1)\n",
+    "            region_top_left = (410, 330)\n",
+    "            region_top_right = (650, 350)\n",
+    "            region_bottom_right = (imshape[1] - 30,imshape[0] - 1)\n",
+    "            vert = np.array([[region_bottom_left , region_top_left, region_top_right, region_bottom_right]], dtype=np.int32)\n",
+    "    else:\n",
+    "            region_bottom_left = (200 , 680)\n",
+    "            region_top_left = (600, 450)\n",
+    "            region_top_right = (750, 450)\n",
+    "            region_bottom_right = (1100, 650)\n",
+    "            vert = np.array([[region_bottom_left , region_top_left, region_top_right, region_bottom_right]], dtype=np.int32)\n",
+    "\n",
+    "    return vert\n",
+    "        \n",
+    "        \n",
+    "def region_of_interest(img, vertices):\n",
+    "    \"\"\"\n",
+    "    Applies an image mask.\n",
+    "    \n",
+    "    Only keeps the region of the image defined by the polygon\n",
+    "    formed from `vertices`. The rest of the image is set to black.\n",
+    "    `vertices` should be a numpy array of integer points.\n",
+    "    \"\"\"\n",
+    "    #defining a blank mask to start with\n",
+    "    mask = np.zeros_like(img)   \n",
+    "    \n",
+    "    #defining a 3 channel or 1 channel color to fill the mask with depending on the input image\n",
+    "    if len(img.shape) > 2:\n",
+    "        channel_count = img.shape[2]  # i.e. 3 or 4 depending on your image\n",
+    "        ignore_mask_color = (255,) * channel_count\n",
+    "    else:\n",
+    "        ignore_mask_color = 255\n",
+    "        \n",
+    "    #filling pixels inside the polygon defined by \"vertices\" with the fill color    \n",
+    "    cv2.fillPoly(mask, vertices, ignore_mask_color)\n",
+    "    \n",
+    "    #returning the image only where mask pixels are nonzero\n",
+    "    masked_image = cv2.bitwise_and(img, mask)\n",
+    "    return masked_image\n",
+    "\n",
+    "\n",
+    "def draw_lines(img, lines, color=[255, 0, 0], thickness=2, make_copy=True):\n",
+    "    \"\"\"\n",
+    "    NOTE: this is the function you might want to use as a starting point once you want to \n",
+    "    average/extrapolate the line segments you detect to map out the full\n",
+    "    extent of the lane (going from the result shown in raw-lines-example.mp4\n",
+    "    to that shown in P1_example.mp4).  \n",
+    "    \n",
+    "    Think about things like separating line segments by their \n",
+    "    slope ((y2-y1)/(x2-x1)) to decide which segments are part of the left\n",
+    "    line vs. the right line.  Then, you can average the position of each of \n",
+    "    the lines and extrapolate to the top and bottom of the lane.\n",
+    "    \n",
+    "    This function draws `lines` with `color` and `thickness`.    \n",
+    "    Lines are drawn on the image inplace (mutates the image).\n",
+    "    If you want to make the lines semi-transparent, think about combining\n",
+    "    this function with the weighted_img() function below\n",
+    "    \"\"\"\n",
+    "    imgcopy=img\n",
+    "    for line in lines:\n",
+    "        for x1,y1,x2,y2 in line:\n",
+    "            cv2.line(imgcopy, (x1, y1), (x2, y2), color, thickness)\n",
+    "    return imgcopy\n",
+    "\n",
+    "\n",
+    "def hough_lines(img, rho, theta, threshold, min_line_len, max_line_gap):\n",
+    "    \"\"\"\n",
+    "    `img` should be the output of a Canny transform.\n",
+    "        \n",
+    "    Returns an image with hough lines drawn.\n",
+    "    \"\"\"\n",
+    "    lines = cv2.HoughLinesP(img, rho, theta, threshold, np.array([]), minLineLength=min_line_len, maxLineGap=max_line_gap)\n",
+    "    \n",
+    "    line_img = np.zeros((img.shape[0], img.shape[1], 3), dtype=np.uint8)\n",
+    "    draw_lines(line_img, lines)\n",
+    "    \n",
+    "    return line_img\n",
+    "\n",
+    "# Python 3 has support for cool math symbols.\n",
+    "\n",
+    "def weighted_img(img, initial_img, α=0.8, β=1., γ=0.):\n",
+    "    \"\"\"\n",
+    "    `img` is the output of the hough_lines(), An image with lines drawn on it.\n",
+    "    Should be a blank image (all black) with lines drawn on it.\n",
+    "    \n",
+    "    `initial_img` should be the image before any processing.\n",
+    "    \n",
+    "    The result image is computed as follows:\n",
+    "    \n",
+    "    initial_img * α + img * β + γ\n",
+    "    NOTE: initial_img and img must be the same shape!\n",
+    "    \"\"\"\n",
+    "    return cv2.addWeighted(initial_img, α, img, β, γ)\n",
+    "\n",
+    "def giveLines(img, rho, theta, threshold, min_line_len, max_line_gap):\n",
+    "    return cv2.HoughLinesP(img, rho, theta, threshold, np.array([]), minLineLength=min_line_len, maxLineGap=max_line_gap)\n",
+    "    \n",
+    "def xysplit(lines, img):\n",
+    "    img_shape = img.shape    \n",
+    "    middle_x = img_shape[1] / 2    \n",
+    "    left_lane_lines = []\n",
+    "    right_lane_lines = []\n",
+    "\n",
+    "    for line in lines:\n",
+    "        for x1, y1, x2, y2 in line:\n",
+    "            dx = x2 - x1 \n",
+    "            if dx == 0: #undefined lines                \n",
+    "                continue\n",
+    "            dy = y2 - y1\n",
+    "            \n",
+    "            if dy == 0: #horizontal lines\n",
+    "                continue            \n",
+    "            slope = dy / dx\n",
+    "            \n",
+    "     \n",
+    "            smallslope = 0.1\n",
+    "            if abs(slope) <= smallslope:\n",
+    "                continue\n",
+    "            \n",
+    "            if slope < 0 and x1 < middle_x and x2 < middle_x: #left lane in left half                \n",
+    "                left_lane_lines.append([[x1, y1, x2, y2]])\n",
+    "                \n",
+    "            elif x1 >= middle_x and x2 >= middle_x: #right lane in right half                \n",
+    "                right_lane_lines.append([[x1, y1, x2, y2]])\n",
+    "    \n",
+    "    return left_lane_lines, right_lane_lines\n",
+    "\n",
+    "def color_lanes(img, left_lane_lines, right_lane_lines, left_lane_color=[255, 0, 0], right_lane_color=[0, 0, 255]):\n",
+    "    left_colored_img = draw_lines(img, left_lane_lines, color=left_lane_color, make_copy=True)\n",
+    "    final_img = draw_lines(left_colored_img, right_lane_lines, color=right_lane_color, make_copy=False)\n",
+    "    \n",
+    "    return final_img\n",
+    "\n",
+    "def find_line_formulas(lines):\n",
+    "    xs=[]\n",
+    "    ys=[]\n",
+    "    \n",
+    "    for line in lines:\n",
+    "        for x1, y1, x2, y2 in line:\n",
+    "            xs.append(x1)\n",
+    "            xs.append(x2)\n",
+    "            ys.append(y1)\n",
+    "            ys.append(y2)\n",
+    "            \n",
+    "        slope,intercept, r_value, p_value, std_err = stats.linregress(xs, ys)\n",
+    "        return (slope,intercept)\n",
+    "\n",
+    "def extrapol_line(img,lines,top_y,make_copy=True):\n",
+    "    m,b=find_line_formulas(lines)\n",
+    "    vert = findcoords(img)\n",
+    "    \n",
+    "    img_shape=img.shape\n",
+    "    bottom_y=img_shape[0]-1\n",
+    "    x_bottom=(bottom_y-b)/m\n",
+    "    \n",
+    "    x_top=(top_y-b)/m\n",
+    "    new_lines = [[[int(x_bottom),int(bottom_y),int(x_top),int(top_y)]]]\n",
+    "    return draw_lines(img,new_lines)\n",
+    "\n",
+    "def extrapol_bothlines(img, left_lane, right_lane):\n",
+    "    vert = findcoords(img)\n",
+    "    region_top_left = vert[0][1]\n",
+    "    \n",
+    "    full_left_lane_img = extrapol_line(img, left_lane, region_top_left[1], make_copy=True)\n",
+    "    full_img = extrapol_line(full_left_lane_img, right_lane, region_top_left[1], make_copy=False)\n",
+    "    \n",
+    "\n",
+    "    img_with_lane_weight = cv2.addWeighted(img, 0.7, full_img, 0.3, 0.0)\n",
+    "    \n",
+    "    \n",
+    "    return img_with_lane_weight\n",
+    "\n",
+    "##def show_image_list(img_list, cols=2,fig_size=(15, 15), img_labels=original_img_names, show_ticks=True):\n",
+    "    #img_count = len(img_list)\n",
+    "    #rows = img_count / cols\n",
+    "   # cmap = None\n",
+    "    #plt.figure(figsize=fig_size)\n",
+    "    #for i in range(0, img_count):\n",
+    "     #   img_name = img_labels[i]\n",
+    "     #   \n",
+    "     #   plt.subplot(rows, cols, i+1)\n",
+    "     ##   img = img_list[i]\n",
+    "      #  if len(img.shape) < 3:\n",
+    "        #    cmap = \"gray\"\n",
+    "        \n",
+    "      #  if not show_ticks:\n",
+    "         #   plt.xticks([])\n",
+    "          #  plt.yticks([])\n",
+    "            \n",
+    "       # plt.title(img_name)    \n",
+    "      #  plt.imshow(img, cmap=cmap)\n",
+    "\n",
+    "  #  plt.tight_layout()\n",
+    "   # plt.show()\n",
+    "    \n",
+    "def to_hsl(img):\n",
+    "    return cv2.cvtColor(img, cv2.COLOR_RGB2HLS)\n",
+    "        \n",
+    "def isolate_yellow_hsl(img):\n",
+    "    low_threshold = np.array([15, 38, 115], dtype=np.uint8)\n",
+    "    high_threshold= np.array([35, 204, 255], dtype=np.uint8)\n",
+    "    yellow_mask= cv2.inRange(img,low_threshold,high_threshold)\n",
+    "    \n",
+    "    return yellow_mask\n",
+    "\n",
+    "def isolate_white_hsl(img):\n",
+    "    low_threshold = np.array([0,200,0], dtype=np.uint8)\n",
+    "    high_threshold = np.array([180,255,255], dtype=np.uint8)\n",
+    "    white_mask=cv2.inRange(img,low_threshold,high_threshold)\n",
+    "    return white_mask"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Test Images\n",
+    "\n",
+    "Build your pipeline to work on the images in the directory \"test_images\"  \n",
+    "**You should make sure your pipeline works well on these images before you try the videos.**"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# import os\n",
+    "os.listdir(\"test_images/\")\n",
+    "img_list_names=os.listdir(\"test_images/\")\n",
+    "original_img_names=list(map(lambda name: \"test_images/\" + name, img_list_names))\n",
+    "print(original_img_names)\n",
+    "\n",
+    "original_images=list(map(lambda img_name: mpimg.imread(img_name), original_img_names)) \n",
+    "show_image_list(original_images)\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Build a Lane Finding Pipeline\n",
+    "\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Build the pipeline and run your solution on all test_images. Make copies into the `test_images_output` directory, and you can use the images in your writeup report.\n",
+    "\n",
+    "Try tuning the various parameters, especially the low and high Canny thresholds as well as the Hough lines parameters."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# TODO: Build your pipeline that will draw lane lines on the test_images\n",
+    "# then save them to the test_images_output directory.\n",
+    "\n",
+    "imgname=('test_images/whiteCarLaneSwitch.jpg')\n",
+    "img=mpimg.imread(imgname)\n",
+    "hslimg=to_hsl(img)\n",
+    "\n",
+    "hsl_yellow=isolate_yellow_hsl(hslimg);\n",
+    "hsl_white=isolate_white_hsl(hslimg);\n",
+    "plt.imshow(hsl_white_img, cmap=\"gray\");\n",
+    "\n",
+    "#def combine_hsl_original\n",
+    "hsl_mask = cv2.bitwise_or(hsl_yellow, hsl_white)\n",
+    "hsl_comb = cv2.bitwise_and(img, img,  mask=hsl_mask)\n",
+    "plt.imshow (hsl_comb)\n",
+    "\n",
+    "#grayscale\n",
+    "gray=grayscale(hsl_comb)\n",
+    "plt.imshow(gray, cmap='gray')\n",
+    "\n",
+    "#gaussian blurr\n",
+    "blur_img=gaussian_blur(gray,kernel_size=5)\n",
+    "plt.imshow(blur_img, cmap='gray')\n",
+    "\n",
+    "#canny edge detector\n",
+    "canny_img=canny(blur_img,50,150)\n",
+    "plt.imshow(canny_img,cmap='gray')\n",
+    "\n",
+    "vert = findcoords(canny_img)\n",
+    "\n",
+    "polyimage=region_of_interest(canny_img,vert)\n",
+    "plt.imshow(polyimage,cmap='gray')\n",
+    "\n",
+    "rho = 1\n",
+    "# 1 degree\n",
+    "theta = (np.pi/180) * 1\n",
+    "threshold = 15\n",
+    "min_line_length = 18\n",
+    "max_line_gap = 10\n",
+    "\n",
+    "hlines=hough_lines(polyimage, rho, theta, threshold, min_line_length, max_line_gap)\n",
+    "plt.imshow(hlines)\n",
+    "lines_inimage=giveLines(polyimage, rho, theta, threshold, min_line_length, max_line_gap)\n",
+    "\n",
+    "#line_img = np.zeros((img.shape[0], img.shape[1], 3), dtype=np.uint8)\n",
+    "#himage2=draw_lines(img,hlines)\n",
+    "\n",
+    "overlay_img=weighted_img(hlines,img)\n",
+    "plt.imshow(overlay_img)\n",
+    "\n",
+    "xysplits=xysplit(lines_inimage,img)\n",
+    "leftlines=xysplits[0]\n",
+    "rightlines=xysplits[1]\n",
+    "\n",
+    "xycolor=color_lanes(img,leftlines,rightlines)\n",
+    "plt.imshow(xycolor)\n",
+    "\n",
+    "final_lanes=(extrapol_bothlines(img,leftlines,rightlines))\n",
+    "plt.title(imgname)\n",
+    "plt.imshow(final_lanes)\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Test on Videos\n",
+    "\n",
+    "You know what's cooler than drawing lanes over images? Drawing lanes over video!\n",
+    "\n",
+    "We can test our solution on two provided videos:\n",
+    "\n",
+    "`solidWhiteRight.mp4`\n",
+    "\n",
+    "`solidYellowLeft.mp4`\n",
+    "\n",
+    "**Note: if you get an import error when you run the next cell, try changing your kernel (select the Kernel menu above --> Change Kernel). Still have problems? Try relaunching Jupyter Notebook from the terminal prompt. Also, consult the forums for more troubleshooting tips.**\n",
+    "\n",
+    "**If you get an error that looks like this:**\n",
+    "```\n",
+    "NeedDownloadError: Need ffmpeg exe. \n",
+    "You can download it by calling: \n",
+    "imageio.plugins.ffmpeg.download()\n",
+    "```\n",
+    "**Follow the instructions in the error message and check out [this forum post](https://discussions.udacity.com/t/project-error-of-test-on-videos/274082) for more troubleshooting tips across operating systems.**"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Import everything needed to edit/save/watch video clips\n",
+    "from moviepy.editor import VideoFileClip\n",
+    "from IPython.display import HTML"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 19,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def process_image(self,image):\n",
+    "    # NOTE: The output you return should be a color image (3 channel) for processing video below\n",
+    "    # TODO: put your pipeline here,\n",
+    "    # you should return the final output (image where lines are drawn on lanes)\n",
+    "\n",
+    "    result=image\n",
+    "    \n",
+    "    \n",
+    "    return result"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Let's try the one with the solid white lane on the right first ..."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 20,
+   "metadata": {},
+   "outputs": [
+    {
+     "ename": "OSError",
+     "evalue": "[WinError 6] The handle is invalid",
+     "output_type": "error",
+     "traceback": [
+      "\u001b[1;31m---------------------------------------------------------------------------\u001b[0m",
+      "\u001b[1;31mOSError\u001b[0m                                   Traceback (most recent call last)",
+      "\u001b[1;32m<ipython-input-20-b571ad6441de>\u001b[0m in \u001b[0;36m<module>\u001b[1;34m\u001b[0m\n\u001b[0;32m      4\u001b[0m \u001b[1;31m## Where start_second and end_second are integer values representing the start and end of the subclip\u001b[0m\u001b[1;33m\u001b[0m\u001b[1;33m\u001b[0m\u001b[0m\n\u001b[0;32m      5\u001b[0m \u001b[1;31m## You may also uncomment the following line for a subclip of the first 5 seconds\u001b[0m\u001b[1;33m\u001b[0m\u001b[1;33m\u001b[0m\u001b[0m\n\u001b[1;32m----> 6\u001b[1;33m \u001b[0mclip1\u001b[0m \u001b[1;33m=\u001b[0m \u001b[0mVideoFileClip\u001b[0m\u001b[1;33m(\u001b[0m\u001b[1;34m\"test_videos/solidWhiteRight.mp4\"\u001b[0m\u001b[1;33m)\u001b[0m\u001b[1;33m.\u001b[0m\u001b[0msubclip\u001b[0m\u001b[1;33m(\u001b[0m\u001b[1;36m0\u001b[0m\u001b[1;33m,\u001b[0m\u001b[1;36m5\u001b[0m\u001b[1;33m)\u001b[0m\u001b[1;33m\u001b[0m\u001b[0m\n\u001b[0m\u001b[0;32m      7\u001b[0m \u001b[1;31m#clip1 = VideoFileClip(\"test_videos/solidWhiteRight.mp4\")\u001b[0m\u001b[1;33m\u001b[0m\u001b[1;33m\u001b[0m\u001b[0m\n\u001b[0;32m      8\u001b[0m \u001b[0mwhite_clip\u001b[0m \u001b[1;33m=\u001b[0m \u001b[0mclip1\u001b[0m\u001b[1;33m.\u001b[0m\u001b[0mfl_image\u001b[0m\u001b[1;33m(\u001b[0m\u001b[0mprocess_image\u001b[0m\u001b[1;33m)\u001b[0m \u001b[1;31m#NOTE: this function expects color images!!\u001b[0m\u001b[1;33m\u001b[0m\u001b[0m\n",
+      "\u001b[1;32m~\\Miniconda3\\envs\\carnd-term1\\lib\\site-packages\\moviepy\\video\\io\\VideoFileClip.py\u001b[0m in \u001b[0;36m__init__\u001b[1;34m(self, filename, has_mask, audio, audio_buffersize, target_resolution, resize_algorithm, audio_fps, audio_nbytes, verbose, fps_source)\u001b[0m\n\u001b[0;32m     89\u001b[0m                                          \u001b[0mtarget_resolution\u001b[0m\u001b[1;33m=\u001b[0m\u001b[0mtarget_resolution\u001b[0m\u001b[1;33m,\u001b[0m\u001b[1;33m\u001b[0m\u001b[0m\n\u001b[0;32m     90\u001b[0m                                          \u001b[0mresize_algo\u001b[0m\u001b[1;33m=\u001b[0m\u001b[0mresize_algorithm\u001b[0m\u001b[1;33m,\u001b[0m\u001b[1;33m\u001b[0m\u001b[0m\n\u001b[1;32m---> 91\u001b[1;33m                                          fps_source=fps_source)\n\u001b[0m\u001b[0;32m     92\u001b[0m \u001b[1;33m\u001b[0m\u001b[0m\n\u001b[0;32m     93\u001b[0m         \u001b[1;31m# Make some of the reader's attributes accessible from the clip\u001b[0m\u001b[1;33m\u001b[0m\u001b[1;33m\u001b[0m\u001b[0m\n",
+      "\u001b[1;32m~\\Miniconda3\\envs\\carnd-term1\\lib\\site-packages\\moviepy\\video\\io\\ffmpeg_reader.py\u001b[0m in \u001b[0;36m__init__\u001b[1;34m(self, filename, print_infos, bufsize, pix_fmt, check_duration, target_resolution, resize_algo, fps_source)\u001b[0m\n\u001b[0;32m     31\u001b[0m         \u001b[0mself\u001b[0m\u001b[1;33m.\u001b[0m\u001b[0mproc\u001b[0m \u001b[1;33m=\u001b[0m \u001b[1;32mNone\u001b[0m\u001b[1;33m\u001b[0m\u001b[0m\n\u001b[0;32m     32\u001b[0m         infos = ffmpeg_parse_infos(filename, print_infos, check_duration,\n\u001b[1;32m---> 33\u001b[1;33m                                    fps_source)\n\u001b[0m\u001b[0;32m     34\u001b[0m         \u001b[0mself\u001b[0m\u001b[1;33m.\u001b[0m\u001b[0mfps\u001b[0m \u001b[1;33m=\u001b[0m \u001b[0minfos\u001b[0m\u001b[1;33m[\u001b[0m\u001b[1;34m'video_fps'\u001b[0m\u001b[1;33m]\u001b[0m\u001b[1;33m\u001b[0m\u001b[0m\n\u001b[0;32m     35\u001b[0m         \u001b[0mself\u001b[0m\u001b[1;33m.\u001b[0m\u001b[0msize\u001b[0m \u001b[1;33m=\u001b[0m \u001b[0minfos\u001b[0m\u001b[1;33m[\u001b[0m\u001b[1;34m'video_size'\u001b[0m\u001b[1;33m]\u001b[0m\u001b[1;33m\u001b[0m\u001b[0m\n",
+      "\u001b[1;32m~\\Miniconda3\\envs\\carnd-term1\\lib\\site-packages\\moviepy\\video\\io\\ffmpeg_reader.py\u001b[0m in \u001b[0;36mffmpeg_parse_infos\u001b[1;34m(filename, print_infos, check_duration, fps_source)\u001b[0m\n\u001b[0;32m    254\u001b[0m         \u001b[0mpopen_params\u001b[0m\u001b[1;33m[\u001b[0m\u001b[1;34m\"creationflags\"\u001b[0m\u001b[1;33m]\u001b[0m \u001b[1;33m=\u001b[0m \u001b[1;36m0x08000000\u001b[0m\u001b[1;33m\u001b[0m\u001b[0m\n\u001b[0;32m    255\u001b[0m \u001b[1;33m\u001b[0m\u001b[0m\n\u001b[1;32m--> 256\u001b[1;33m     \u001b[0mproc\u001b[0m \u001b[1;33m=\u001b[0m \u001b[0msp\u001b[0m\u001b[1;33m.\u001b[0m\u001b[0mPopen\u001b[0m\u001b[1;33m(\u001b[0m\u001b[0mcmd\u001b[0m\u001b[1;33m,\u001b[0m \u001b[1;33m**\u001b[0m\u001b[0mpopen_params\u001b[0m\u001b[1;33m)\u001b[0m\u001b[1;33m\u001b[0m\u001b[0m\n\u001b[0m\u001b[0;32m    257\u001b[0m \u001b[1;33m\u001b[0m\u001b[0m\n\u001b[0;32m    258\u001b[0m     \u001b[0mproc\u001b[0m\u001b[1;33m.\u001b[0m\u001b[0mstdout\u001b[0m\u001b[1;33m.\u001b[0m\u001b[0mreadline\u001b[0m\u001b[1;33m(\u001b[0m\u001b[1;33m)\u001b[0m\u001b[1;33m\u001b[0m\u001b[0m\n",
+      "\u001b[1;32m~\\Miniconda3\\envs\\carnd-term1\\lib\\subprocess.py\u001b[0m in \u001b[0;36m__init__\u001b[1;34m(self, args, bufsize, executable, stdin, stdout, stderr, preexec_fn, close_fds, shell, cwd, env, universal_newlines, startupinfo, creationflags, restore_signals, start_new_session, pass_fds)\u001b[0m\n\u001b[0;32m    840\u001b[0m                  pass_fds=()):\n\u001b[0;32m    841\u001b[0m         \u001b[1;34m\"\"\"Create new Popen instance.\"\"\"\u001b[0m\u001b[1;33m\u001b[0m\u001b[0m\n\u001b[1;32m--> 842\u001b[1;33m         \u001b[0m_cleanup\u001b[0m\u001b[1;33m(\u001b[0m\u001b[1;33m)\u001b[0m\u001b[1;33m\u001b[0m\u001b[0m\n\u001b[0m\u001b[0;32m    843\u001b[0m         \u001b[1;31m# Held while anything is calling waitpid before returncode has been\u001b[0m\u001b[1;33m\u001b[0m\u001b[1;33m\u001b[0m\u001b[0m\n\u001b[0;32m    844\u001b[0m         \u001b[1;31m# updated to prevent clobbering returncode if wait() or poll() are\u001b[0m\u001b[1;33m\u001b[0m\u001b[1;33m\u001b[0m\u001b[0m\n",
+      "\u001b[1;32m~\\Miniconda3\\envs\\carnd-term1\\lib\\subprocess.py\u001b[0m in \u001b[0;36m_cleanup\u001b[1;34m()\u001b[0m\n\u001b[0;32m    503\u001b[0m \u001b[1;32mdef\u001b[0m \u001b[0m_cleanup\u001b[0m\u001b[1;33m(\u001b[0m\u001b[1;33m)\u001b[0m\u001b[1;33m:\u001b[0m\u001b[1;33m\u001b[0m\u001b[0m\n\u001b[0;32m    504\u001b[0m     \u001b[1;32mfor\u001b[0m \u001b[0minst\u001b[0m \u001b[1;32min\u001b[0m \u001b[0m_active\u001b[0m\u001b[1;33m[\u001b[0m\u001b[1;33m:\u001b[0m\u001b[1;33m]\u001b[0m\u001b[1;33m:\u001b[0m\u001b[1;33m\u001b[0m\u001b[0m\n\u001b[1;32m--> 505\u001b[1;33m         \u001b[0mres\u001b[0m \u001b[1;33m=\u001b[0m \u001b[0minst\u001b[0m\u001b[1;33m.\u001b[0m\u001b[0m_internal_poll\u001b[0m\u001b[1;33m(\u001b[0m\u001b[0m_deadstate\u001b[0m\u001b[1;33m=\u001b[0m\u001b[0msys\u001b[0m\u001b[1;33m.\u001b[0m\u001b[0mmaxsize\u001b[0m\u001b[1;33m)\u001b[0m\u001b[1;33m\u001b[0m\u001b[0m\n\u001b[0m\u001b[0;32m    506\u001b[0m         \u001b[1;32mif\u001b[0m \u001b[0mres\u001b[0m \u001b[1;32mis\u001b[0m \u001b[1;32mnot\u001b[0m \u001b[1;32mNone\u001b[0m\u001b[1;33m:\u001b[0m\u001b[1;33m\u001b[0m\u001b[0m\n\u001b[0;32m    507\u001b[0m             \u001b[1;32mtry\u001b[0m\u001b[1;33m:\u001b[0m\u001b[1;33m\u001b[0m\u001b[0m\n",
+      "\u001b[1;32m~\\Miniconda3\\envs\\carnd-term1\\lib\\subprocess.py\u001b[0m in \u001b[0;36m_internal_poll\u001b[1;34m(self, _deadstate, _WaitForSingleObject, _WAIT_OBJECT_0, _GetExitCodeProcess)\u001b[0m\n\u001b[0;32m   1257\u001b[0m             \"\"\"\n\u001b[0;32m   1258\u001b[0m             \u001b[1;32mif\u001b[0m \u001b[0mself\u001b[0m\u001b[1;33m.\u001b[0m\u001b[0mreturncode\u001b[0m \u001b[1;32mis\u001b[0m \u001b[1;32mNone\u001b[0m\u001b[1;33m:\u001b[0m\u001b[1;33m\u001b[0m\u001b[0m\n\u001b[1;32m-> 1259\u001b[1;33m                 \u001b[1;32mif\u001b[0m \u001b[0m_WaitForSingleObject\u001b[0m\u001b[1;33m(\u001b[0m\u001b[0mself\u001b[0m\u001b[1;33m.\u001b[0m\u001b[0m_handle\u001b[0m\u001b[1;33m,\u001b[0m \u001b[1;36m0\u001b[0m\u001b[1;33m)\u001b[0m \u001b[1;33m==\u001b[0m \u001b[0m_WAIT_OBJECT_0\u001b[0m\u001b[1;33m:\u001b[0m\u001b[1;33m\u001b[0m\u001b[0m\n\u001b[0m\u001b[0;32m   1260\u001b[0m                     \u001b[0mself\u001b[0m\u001b[1;33m.\u001b[0m\u001b[0mreturncode\u001b[0m \u001b[1;33m=\u001b[0m \u001b[0m_GetExitCodeProcess\u001b[0m\u001b[1;33m(\u001b[0m\u001b[0mself\u001b[0m\u001b[1;33m.\u001b[0m\u001b[0m_handle\u001b[0m\u001b[1;33m)\u001b[0m\u001b[1;33m\u001b[0m\u001b[0m\n\u001b[0;32m   1261\u001b[0m             \u001b[1;32mreturn\u001b[0m \u001b[0mself\u001b[0m\u001b[1;33m.\u001b[0m\u001b[0mreturncode\u001b[0m\u001b[1;33m\u001b[0m\u001b[0m\n",
+      "\u001b[1;31mOSError\u001b[0m: [WinError 6] The handle is invalid"
+     ]
+    }
+   ],
+   "source": [
+    "white_output = 'test_videos_output/solidWhiteRight.mp4'\n",
+    "## To speed up the testing process you may want to try your pipeline on a shorter subclip of the video\n",
+    "## To do so add .subclip(start_second,end_second) to the end of the line below\n",
+    "## Where start_second and end_second are integer values representing the start and end of the subclip\n",
+    "## You may also uncomment the following line for a subclip of the first 5 seconds\n",
+    "clip1 = VideoFileClip(\"test_videos/solidWhiteRight.mp4\").subclip(0,5)\n",
+    "#clip1 = VideoFileClip(\"test_videos/solidWhiteRight.mp4\")\n",
+    "white_clip = clip1.fl_image(process_image) #NOTE: this function expects color images!!\n",
+    "%time white_clip.write_videofile(white_output, audio=False)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Play the video inline, or if you prefer find the video in your filesystem (should be in the same directory) and play it in your video player of choice."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "\n",
+       "<video width=\"960\" height=\"540\" controls>\n",
+       "  <source src=\"test_videos_output/solidWhiteRight.mp4\">\n",
+       "</video>\n"
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "execution_count": 7,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "HTML(\"\"\"\n",
+    "<video width=\"960\" height=\"540\" controls>\n",
+    "  <source src=\"{0}\">\n",
+    "</video>\n",
+    "\"\"\".format(white_output))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Improve the draw_lines() function\n",
+    "\n",
+    "**At this point, if you were successful with making the pipeline and tuning parameters, you probably have the Hough line segments drawn onto the road, but what about identifying the full extent of the lane and marking it clearly as in the example video (P1_example.mp4)?  Think about defining a line to run the full length of the visible lane based on the line segments you identified with the Hough Transform. As mentioned previously, try to average and/or extrapolate the line segments you've detected to map out the full extent of the lane lines. You can see an example of the result you're going for in the video \"P1_example.mp4\".**\n",
+    "\n",
+    "**Go back and modify your draw_lines function accordingly and try re-running your pipeline. The new output should draw a single, solid line over the left lane line and a single, solid line over the right lane line. The lines should start from the bottom of the image and extend out to the top of the region of interest.**"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Now for the one with the solid yellow lane on the left. This one's more tricky!"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "yellow_output = 'test_videos_output/solidYellowLeft.mp4'\n",
+    "## To speed up the testing process you may want to try your pipeline on a shorter subclip of the video\n",
+    "## To do so add .subclip(start_second,end_second) to the end of the line below\n",
+    "## Where start_second and end_second are integer values representing the start and end of the subclip\n",
+    "## You may also uncomment the following line for a subclip of the first 5 seconds\n",
+    "##clip2 = VideoFileClip('test_videos/solidYellowLeft.mp4').subclip(0,5)\n",
+    "clip2 = VideoFileClip('test_videos/solidYellowLeft.mp4')\n",
+    "yellow_clip = clip2.fl_image(process_image)\n",
+    "%time yellow_clip.write_videofile(yellow_output, audio=False)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "HTML(\"\"\"\n",
+    "<video width=\"960\" height=\"540\" controls>\n",
+    "  <source src=\"{0}\">\n",
+    "</video>\n",
+    "\"\"\".format(yellow_output))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Writeup and Submission\n",
+    "\n",
+    "If you're satisfied with your video outputs, it's time to make the report writeup in a pdf or markdown file. Once you have this Ipython notebook ready along with the writeup, it's time to submit for review! Here is a [link](https://github.com/udacity/CarND-LaneLines-P1/blob/master/writeup_template.md) to the writeup template file.\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "collapsed": true
+   },
+   "source": [
+    "## Optional Challenge\n",
+    "\n",
+    "Try your lane finding pipeline on the video below.  Does it still work?  Can you figure out a way to make it more robust?  If you're up for the challenge, modify your pipeline so it works with this video and submit it along with the rest of your project!"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "challenge_output = 'test_videos_output/challenge.mp4'\n",
+    "## To speed up the testing process you may want to try your pipeline on a shorter subclip of the video\n",
+    "## To do so add .subclip(start_second,end_second) to the end of the line below\n",
+    "## Where start_second and end_second are integer values representing the start and end of the subclip\n",
+    "## You may also uncomment the following line for a subclip of the first 5 seconds\n",
+    "##clip3 = VideoFileClip('test_videos/challenge.mp4').subclip(0,5)\n",
+    "clip3 = VideoFileClip('test_videos/challenge.mp4')\n",
+    "challenge_clip = clip3.fl_image(process_image)\n",
+    "%time challenge_clip.write_videofile(challenge_output, audio=False)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "HTML(\"\"\"\n",
+    "<video width=\"960\" height=\"540\" controls>\n",
+    "  <source src=\"{0}\">\n",
+    "</video>\n",
+    "\"\"\".format(challenge_output))"
+   ]
+  }
+ ],
+ "metadata": {
+  "anaconda-cloud": {},
+  "kernelspec": {
+   "display_name": "Python [conda env:carnd-term1]",
+   "language": "python",
+   "name": "conda-env-carnd-term1-py"
+  },
+  "widgets": {
+   "state": {},
+   "version": "1.1.2"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 1
+}
